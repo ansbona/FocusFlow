@@ -1,0 +1,44 @@
+Powerful Figma AI Prompt: FocusFlow v2 (Integrated Time Metrics)
+Create a Figma design for a web application called "FocusFlow." FocusFlow is a "co-pilot" for digital learning designed for students, especially those with ADHD or sensory processing challenges. It uses external sensors to detect mental fatigue and provides ambient feedback to help them maintain an optimal "Flow State."
+
+The design should include the following sections within a clean, minimalist layout:
+
+1. Dashboard:
+
+Real-Time Context: In the top-right corner, a clear, subtle digital clock showing the current time (e.g., 10:30 AM).
+
+The Flow State Monitor (Integrated): This is the central visualization.
+
+Visualization: A prominent, animated radial progress ring or a smooth, pulsing wave visual that shifts between calm blues/greens (Flow) and soft oranges (Fatigue).
+
+Integration: Inside or directly below this visualization, display the "Focus Streak." This is a timer that counts UP only while the user is in the "Flow State" (e.g., "Current Focus Streak: 12m 30s"). It should feel rewarding, not pressuring.
+
+Biomarker Widgets: Two smaller, distinct widgets showing real-time data from the "Blink Detector" (Blinks per Minute with a small icon) and "Head Movement" (a dynamic, vertical bar showing intensity).
+
+Alerts and Suggestions: A subtle text feed for non-intrusive system notifications (e.g., "Slowing down? Try a deep breath.").
+
+2. Physical Scaffolding Controls:
+
+Ambient Light Customization: Sliders to adjust the brightness, "breathing" speed, and color palettes for the connected LED bar (e.g., "Focus Color: Aqua," "Relax Color: Peach"). Use a visual spectrum to make choices intuitive.
+
+Desk Tap (Haptic) Feedback: Controls to adjust the intensity of the solenoid "desk tap." Include a clear On/Off toggle.
+
+3. Flow Timeline:
+
+Interactive Session History: A horizontal timeline of the current learning session. Segments are color-coded: Green (Flow/Focus Streak active), Orange (Fatigue), Blue (Break/Idle).
+
+Time Labels: Clear timestamps along the timeline to track session progression. Clicking a segment should reveal detailed stats for that period.
+
+4. Settings:
+
+Sensor Calibration: Easy-to-use controls to calibrate the "baseline" blink rate and movement thresholds to accommodate individual differences.
+
+Visual Style and HRI/Computer Engineering Best Practices:
+
+Affordances & Consistency: Interactive elements (buttons, sliders, toggles) should have a distinct, consistent style that indicates they can be manipulated.
+
+Color as Information, Not Clutter: Adhere strictly to a deliberate color palette. Calm blues/greens indicate good status; soft oranges indicate high cognitive load/fatigue; cool grays/blues indicate idle/break. Avoid harsh reds.
+
+Minimized Cognitive Load: The UI itself should be peaceful. Use ample whitespace, clear typography, and logical groupings of information. The clock and timer must not feel overwhelming or anxiety-inducing.
+
+Accessibility: Ensure the design meets accessibility standards, particularly regarding contrast ratios and readability for users with varying visual sensitivities.
