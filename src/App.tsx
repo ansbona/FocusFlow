@@ -93,7 +93,7 @@ function App() {
 
   const currentSessionTime = 45;
 
-  // 🔥 ESP32 BLINK LISTENER - ADD THIS
+  //ESP32 BLINK LISTENER 
   useEffect(() => {
     const blinkRef = ref(database, 'blinkRate');
     const unsubscribe = onValue(blinkRef, (snapshot) => {
@@ -152,7 +152,7 @@ function App() {
     return () => clearInterval(streakInterval);
   }, [flowState, isSessionActive]);
 
-  // 🔥 MODIFIED SIMULATION - Blink now real, movement still mock
+  //SIMULATION - Blink 
   useEffect(() => {
     if (!isSessionActive) return;
     
@@ -202,7 +202,7 @@ function App() {
     return `${hours}:${minutesStr} ${ampm}`;
   };
 
-  // 🔥 YOUR JSX STAYS 100% IDENTICAL
+  //JSX
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
       {/* Header */}
