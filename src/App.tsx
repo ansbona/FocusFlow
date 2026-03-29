@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { ref, onValue } from 'firebase/database';
-import { database } from './firebase';  // ADD THIS LINE
+import { database } from './firebase';  
 import { FlowStateMeter } from "./app/components/FlowStateMeter";
 import { SensorWidget } from "./app/components/SensorWidget";
 import { PhysicalControls } from "./app/components/PhysicalControls";
@@ -32,7 +32,7 @@ function App() {
   // Flow state
   const [flowLevel, setFlowLevel] = useState(75);
   const [flowState, setFlowState] = useState<"flow" | "focus" | "fatigue" | "break">("flow");
-  const [focusStreakSeconds, setFocusStreakSeconds] = useState(750);
+  const [focusStreakSeconds, setFocusStreakSeconds] = useState(0);
   
   // Physical controls state
   const [lightColor, setLightColor] = useState("#0EA5E9");
@@ -97,6 +97,7 @@ function App() {
   useEffect(() => {
     const blinkRef = ref(database, 'blinkRate');
     const unsubscribe = onValue(blinkRef, (snapshot) => {
+      if (!isSessionActive) return;
       const data = snapshot.val();
       if (data !== null && !isNaN(data)) {
         const newBlinkRate = parseInt(data);
@@ -117,11 +118,12 @@ function App() {
       }
     });
     return () => unsubscribe();
-  }, [blinkThreshold]);
+  }, [blinkThreshold, isSessionActive]);
 
   useEffect(() => {
     const movementRef = ref(database, 'headMovement');
     const unsubscribe = onValue(movementRef, (snapshot) => {
+      if (!isSessionActive) return;
       const data = snapshot.val();
       if (data !== null && !isNaN(data)) {
         const newMovement = parseInt(data);
@@ -130,7 +132,7 @@ function App() {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [isSessionActive]);
   // Update current time every second
   useEffect(() => {
     const timeInterval = setInterval(() => {
