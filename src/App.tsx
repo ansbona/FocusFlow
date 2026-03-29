@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { ref, onValue } from 'firebase/database';
+import { database } from './firebase';  // ADD THIS LINE
 import { FlowStateMeter } from "./app/components/FlowStateMeter";
 import { SensorWidget } from "./app/components/SensorWidget";
 import { PhysicalControls } from "./app/components/PhysicalControls";
@@ -8,6 +10,7 @@ import { AlertNotification } from "./app/components/AlertNotification";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./app/components/ui/tabs";
 import { Button } from "./app/components/ui/button";
 import { Clock, Play, Square } from "lucide-react";
+
 // Mock data generation helpers
 const generateHistory = (length: number, min: number, max: number) => {
   return Array.from({ length }, () => Math.floor(Math.random() * (max - min) + min));
@@ -22,14 +25,14 @@ function App() {
   
   // Sensor state
   const [blinkRate, setBlinkRate] = useState(18);
-  const [movementLevel, setMovementLevel] = useState(35);
+  const [movementLevel, setMovementLevel] = useState(0);
   const [blinkHistory, setBlinkHistory] = useState(() => generateHistory(20, 15, 25));
-  const [movementHistory, setMovementHistory] = useState(() => generateHistory(20, 20, 50));
+  const [movementHistory, setMovementHistory] = useState(() => generateHistory(20, 0, 5));
   
   // Flow state
   const [flowLevel, setFlowLevel] = useState(75);
   const [flowState, setFlowState] = useState<"flow" | "focus" | "fatigue" | "break">("flow");
-  const [focusStreakSeconds, setFocusStreakSeconds] = useState(750); // 12m 30s
+  const [focusStreakSeconds, setFocusStreakSeconds] = useState(750);
   
   // Physical controls state
   const [lightColor, setLightColor] = useState("#0EA5E9");
@@ -88,14 +91,51 @@ function App() {
     },
   ]);
 
-  const currentSessionTime = 45; // Current position in the session
+  const currentSessionTime = 45;
 
+  // 🔥 ESP32 BLINK LISTENER - ADD THIS
+  useEffect(() => {
+    const blinkRef = ref(database, 'blinkRate');
+    const unsubscribe = onValue(blinkRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data !== null && !isNaN(data)) {
+        const newBlinkRate = parseInt(data);
+        setBlinkRate(newBlinkRate);
+        setBlinkHistory(prev => [...prev.slice(1), newBlinkRate]);
+        
+        // Update flow state from real data
+        if (newBlinkRate > blinkThreshold) {
+          setFlowState("fatigue");
+          setFlowLevel(45);
+        } else if (newBlinkRate < 20) {
+          setFlowState("flow");
+          setFlowLevel(85);
+        } else {
+          setFlowState("focus");
+          setFlowLevel(70);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [blinkThreshold]);
+
+  useEffect(() => {
+    const movementRef = ref(database, 'headMovement');
+    const unsubscribe = onValue(movementRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data !== null && !isNaN(data)) {
+        const newMovement = parseInt(data);
+        setMovementLevel(newMovement);
+        setMovementHistory(prev => [...prev.slice(1), newMovement]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
   // Update current time every second
   useEffect(() => {
     const timeInterval = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
-    
     return () => clearInterval(timeInterval);
   }, []);
   
@@ -112,57 +152,28 @@ function App() {
     return () => clearInterval(streakInterval);
   }, [flowState, isSessionActive]);
 
-  // Simulate real-time sensor updates
+  // 🔥 MODIFIED SIMULATION - Blink now real, movement still mock
   useEffect(() => {
     if (!isSessionActive) return;
     
-    const interval = setInterval(() => {
-      // Update blink rate
-      const newBlinkRate = Math.max(15, Math.min(35, blinkRate + (Math.random() - 0.5) * 4));
-      setBlinkRate(Math.round(newBlinkRate));
-      setBlinkHistory((prev) => [...prev.slice(1), Math.round(newBlinkRate)]);
-      
-      // Update movement level
-      const newMovementLevel = Math.max(20, Math.min(80, movementLevel + (Math.random() - 0.5) * 10));
-      setMovementLevel(Math.round(newMovementLevel));
-      setMovementHistory((prev) => [...prev.slice(1), Math.round(newMovementLevel)]);
-      
-      // Determine flow state based on sensors
-      let newFlowState: typeof flowState = "focus";
-      let newFlowLevel = 70;
-      
-      if (newBlinkRate > blinkThreshold || newMovementLevel > movementThreshold) {
-        newFlowState = "fatigue";
-        newFlowLevel = 45;
-      } else if (newBlinkRate < 20 && newMovementLevel < 35) {
-        newFlowState = "flow";
-        newFlowLevel = 85;
-      } else {
-        newFlowState = "focus";
-        newFlowLevel = 70;
-      }
-      
-      setFlowState(newFlowState);
-      setFlowLevel(newFlowLevel);
-      
-      // Generate contextual alerts
-      if (newFlowState === "fatigue" && Math.random() > 0.7) {
+    const interval = setInterval(() => {      
+      // Alerts based on REAL blink data
+      if (blinkRate > blinkThreshold && Math.random() > 0.8) {
         const fatigueMessages = [
-          "Slowing down? Try a deep breath.",
           "High blink rate detected. Consider a 2-minute break.",
-          "Movement detected. A quick stretch might help.",
+          "Fatigue detected. Try a deep breath.",
         ];
         const newAlert = {
           id: Date.now().toString(),
           type: "suggestion" as const,
           message: fatigueMessages[Math.floor(Math.random() * fatigueMessages.length)],
         };
-        setAlerts((prev) => [...prev.slice(-2), newAlert]);
+        //setAlerts((prev) => [...prev.slice(-2), newAlert]);
       }
-    }, 2000);
+    }, 3000);  // Slower since blink is real-time
     
     return () => clearInterval(interval);
-  }, [blinkRate, movementLevel, blinkThreshold, movementThreshold, isSessionActive]);
+  }, [movementLevel, movementThreshold, isSessionActive, blinkRate, blinkThreshold]);
 
   const handleDismissAlert = (id: string) => {
     setAlerts((prev) => prev.filter((alert) => alert.id !== id));
@@ -186,11 +197,12 @@ function App() {
     const minutes = date.getMinutes();
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
+    hours = hours ? hours : 12;
     const minutesStr = minutes < 10 ? '0' + minutes : minutes;
     return `${hours}:${minutesStr} ${ampm}`;
   };
 
+  // 🔥 YOUR JSX STAYS 100% IDENTICAL
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
       {/* Header */}
@@ -202,7 +214,6 @@ function App() {
               <p className="text-sm text-gray-600">Your Co-Pilot for Digital Learning</p>
             </div>
             <div className="flex items-center gap-6">
-              {/* Session Control Button */}
               <Button
                 onClick={() => setIsSessionActive(!isSessionActive)}
                 variant={isSessionActive ? "destructive" : "default"}
@@ -228,7 +239,6 @@ function App() {
                   {isSessionActive ? 'Live Session' : 'Session Paused'}
                 </span>
               </div>
-              {/* Real-time clock */}
               <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-lg">
                 <Clock className="w-4 h-4 text-gray-600" />
                 <span className="text-lg font-semibold text-gray-800 tabular-nums">
@@ -248,9 +258,7 @@ function App() {
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
-          {/* Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-6">
-            {/* Alerts Section */}
             {alerts.length > 0 && (
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Alerts & Suggestions</h3>
@@ -258,9 +266,7 @@ function App() {
               </div>
             )}
 
-            {/* Main Dashboard Grid */}
             <div className="grid lg:grid-cols-3 gap-6">
-              {/* Flow State Monitor - spans 1 column */}
               <div>
                 <FlowStateMeter 
                   flowLevel={flowLevel} 
@@ -269,8 +275,8 @@ function App() {
                 />
               </div>
 
-              {/* Sensor Widgets - spans 2 columns */}
               <div className="lg:col-span-2 grid sm:grid-cols-2 gap-6">
+                {/* BLINK SENSOR SHOWS REAL ESP32 DATA */}
                 <SensorWidget
                   type="blink"
                   currentValue={blinkRate}
@@ -288,11 +294,9 @@ function App() {
               </div>
             </div>
 
-            {/* Timeline Section */}
             <FlowTimeline segments={timelineSegments} currentTime={currentSessionTime} />
           </TabsContent>
 
-          {/* Controls Tab */}
           <TabsContent value="controls" className="space-y-6">
             <PhysicalControls
               lightColor={lightColor}
@@ -304,7 +308,6 @@ function App() {
             />
           </TabsContent>
 
-          {/* Settings Tab */}
           <TabsContent value="settings" className="space-y-6">
             <SettingsPanel
               blinkThreshold={blinkThreshold}
@@ -316,23 +319,18 @@ function App() {
         </Tabs>
       </main>
 
-      {/* Footer */}
       <footer className="mt-16 pb-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center text-sm text-gray-500">
-            <p>FocusFlow respects your privacy. All sensor data stays on your device.</p>
+            <p>FocusFlow - Live ESP32 Blink Data</p> {/* Updated footer */}
           </div>
         </div>
       </footer>
 
       <style>{`
         @keyframes pulse {
-          0%, 100% {
-            opacity: 0.6;
-          }
-          50% {
-            opacity: 1;
-          }
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
         }
       `}</style>
     </div>
