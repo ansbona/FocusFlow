@@ -41,11 +41,11 @@ export function PhysicalControls({
             <p className="text-xs text-gray-500">LED status indicator</p>
           </div>
         </div>
+
         <div className="space-y-4 pl-11">
           {/* Color Spectrum with Presets */}
           <div className="space-y-2">
             <Label className="text-sm text-gray-700">Color Palette</Label>
-
             {/* Visual Spectrum */}
             <div
               className="h-12 rounded-lg overflow-hidden mb-3"
@@ -53,7 +53,6 @@ export function PhysicalControls({
                 background: "linear-gradient(to right, #0EA5E9, #10B981, #FB923C, #ff0000)",
               }}
             />
-
             {/* Color Presets */}
             <div className="grid grid-cols-2 gap-2">
               {colorPresets.map((preset) => (
@@ -129,26 +128,52 @@ export function PhysicalControls({
           </div>
         </div>
 
-        <div className="pl-11 space-y-2">
+        <div className="pl-11 space-y-4">
           <p className="text-xs text-gray-500">
             Receive soft audio alerts when your focus state changes
           </p>
-          {/* Threshold legend */}
-          <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-            <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-100">
-              <p className="text-xs font-semibold text-emerald-700">1 – 20</p>
-              <p className="text-xs text-emerald-600">Normal</p>
-              <p className="text-[10px] text-emerald-500 mt-0.5">No sound</p>
+
+          {/* Blink Rate legend */}
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Blink Rate</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-100">
+                <p className="text-xs font-semibold text-emerald-700">1 – 20</p>
+                <p className="text-xs text-emerald-600">Normal</p>
+                <p className="text-[10px] text-emerald-500 mt-0.5">No sound</p>
+              </div>
+              <div className="p-2 rounded-lg bg-orange-50 border border-orange-100">
+                <p className="text-xs font-semibold text-orange-700">21 – 30</p>
+                <p className="text-xs text-orange-600">Fatigue</p>
+                <p className="text-[10px] text-orange-500 mt-0.5">Soft tone</p>
+              </div>
+              <div className="p-2 rounded-lg bg-red-50 border border-red-100">
+                <p className="text-xs font-semibold text-red-700">31+</p>
+                <p className="text-xs text-red-600">Critical</p>
+                <p className="text-[10px] text-red-500 mt-0.5">Alert tone</p>
+              </div>
             </div>
-            <div className="p-2 rounded-lg bg-orange-50 border border-orange-100">
-              <p className="text-xs font-semibold text-orange-700">21 – 30</p>
-              <p className="text-xs text-orange-600">Fatigue</p>
-              <p className="text-[10px] text-orange-500 mt-0.5">Soft tone</p>
-            </div>
-            <div className="p-2 rounded-lg bg-red-50 border border-red-100">
-              <p className="text-xs font-semibold text-red-700">31+</p>
-              <p className="text-xs text-red-600">Critical</p>
-              <p className="text-[10px] text-red-500 mt-0.5">Alert tone</p>
+          </div>
+
+          {/* Head Movement legend */}
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Head Movement</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-100">
+                <p className="text-xs font-semibold text-emerald-700">Low</p>
+                <p className="text-xs text-emerald-600">Normal</p>
+                <p className="text-[10px] text-emerald-500 mt-0.5">No sound</p>
+              </div>
+              <div className="p-2 rounded-lg bg-orange-50 border border-orange-100">
+                <p className="text-xs font-semibold text-orange-700">Moderate</p>
+                <p className="text-xs text-orange-600">Warning</p>
+                <p className="text-[10px] text-orange-500 mt-0.5">Soft tone</p>
+              </div>
+              <div className="p-2 rounded-lg bg-red-50 border border-red-100">
+                <p className="text-xs font-semibold text-red-700">High</p>
+                <p className="text-xs text-red-600">Alert</p>
+                <p className="text-[10px] text-red-500 mt-0.5">Double tone</p>
+              </div>
             </div>
           </div>
         </div>

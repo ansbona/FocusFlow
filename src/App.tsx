@@ -11,52 +11,44 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./app/components/ui/ta
 import { Button } from "./app/components/ui/button";
 import { Clock, Play, Square } from "lucide-react";
 
-// Mock data generation helpers
-const generateHistory = (length: number, min: number, max: number) => {
-  return Array.from({ length }, () => Math.floor(Math.random() * (max - min) + min));
-};
+// ─── Types ────────────────────────────────────────────────────────────────────
+type AlertType = "success" | "suggestion" | "info";
+interface AlertItem {
+  id: string;
+  type: AlertType;
+  message: string;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const generateHistory = (length: number, min: number, max: number): number[] =>
+  Array.from({ length }, () => Math.floor(Math.random() * (max - min) + min));
 
 // ─── Sound helpers (Web Audio API) ───────────────────────────────────────────
-
-/**
- * Plays a soft two-tone chime for the "fatigue" threshold (blink rate 21-30).
- * Uses a sine wave at ~440 Hz with a gentle fade-out envelope.
- */
 function playFatigueSound(ctx: AudioContext) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-
   osc.type = "sine";
-  osc.frequency.setValueAtTime(440, ctx.currentTime);          // A4
-  osc.frequency.setValueAtTime(520, ctx.currentTime + 0.15);   // slight rise
-
+  osc.frequency.setValueAtTime(440, ctx.currentTime);
+  osc.frequency.setValueAtTime(520, ctx.currentTime + 0.15);
   gain.gain.setValueAtTime(0, ctx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.05); // soft attack
-  gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.6);     // gentle fade
-
+  gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.05);
+  gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.6);
   osc.connect(gain);
   gain.connect(ctx.destination);
   osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + 0.65);
 }
 
-/**
- * Plays a more urgent two-pulse alert for the "critical" threshold (blink rate 31+).
- * Uses a higher-pitched tone with two short pulses.
- */
 function playCriticalSound(ctx: AudioContext) {
   [0, 0.3].forEach((delay) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-
     osc.type = "sine";
-    osc.frequency.setValueAtTime(880, ctx.currentTime + delay);       // A5
-    osc.frequency.setValueAtTime(660, ctx.currentTime + delay + 0.1); // dip
-
+    osc.frequency.setValueAtTime(880, ctx.currentTime + delay);
+    osc.frequency.setValueAtTime(660, ctx.currentTime + delay + 0.1);
     gain.gain.setValueAtTime(0, ctx.currentTime + delay);
     gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + delay + 0.04);
     gain.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + 0.25);
-
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(ctx.currentTime + delay);
@@ -64,63 +56,90 @@ function playCriticalSound(ctx: AudioContext) {
   });
 }
 
+function playMovementWarningSound(ctx: AudioContext) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(360, ctx.currentTime);
+  osc.frequency.setValueAtTime(420, ctx.currentTime + 0.1);
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.05);
+  gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.55);
+}
+
+function playMovementAlertSound(ctx: AudioContext) {
+  [0, 0.35].forEach((delay) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(720, ctx.currentTime + delay);
+    osc.frequency.setValueAtTime(560, ctx.currentTime + delay + 0.1);
+    gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+    gain.gain.linearRampToValueAtTime(0.24, ctx.currentTime + delay + 0.04);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + 0.28);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime + delay);
+    osc.stop(ctx.currentTime + delay + 0.32);
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-
 function App() {
-  // Session control state
-  const [isSessionActive, setIsSessionActive] = useState(true);
+  // ── Session ────────────────────────────────────────────────────────────────
+  const [isSessionActive, setIsSessionActive] = useState<boolean>(true);
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
 
-  // Current time state
-  const [currentTime, setCurrentTime] = useState(new Date());
+  // ── Sensors ────────────────────────────────────────────────────────────────
+  const [blinkRate, setBlinkRate] = useState<number>(18);
+  const [movementLevel, setMovementLevel] = useState<number>(0);
+  const [blinkHistory, setBlinkHistory] = useState<number[]>(() => generateHistory(20, 15, 25));
+  const [movementHistory, setMovementHistory] = useState<number[]>(() => generateHistory(20, 0, 5));
 
-  // Sensor state
-  const [blinkRate, setBlinkRate] = useState(18);
-  const [movementLevel, setMovementLevel] = useState(0);
-  const [blinkHistory, setBlinkHistory] = useState(() => generateHistory(20, 15, 25));
-  const [movementHistory, setMovementHistory] = useState(() => generateHistory(20, 0, 5));
-
-  // Flow state
-  const [flowLevel, setFlowLevel] = useState(75);
+  // ── Flow ───────────────────────────────────────────────────────────────────
+  const [flowLevel, setFlowLevel] = useState<number>(75);
   const [flowState, setFlowState] = useState<"flow" | "focus" | "fatigue" | "break">("flow");
-  const [focusStreakSeconds, setFocusStreakSeconds] = useState(0);
+  const [focusStreakSeconds, setFocusStreakSeconds] = useState<number>(0);
 
-  // Physical controls state
-  const [lightColor, setLightColor] = useState("#0EA5E9");
-  const [lightBrightness, setLightBrightness] = useState(70);
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  // ── Physical controls ──────────────────────────────────────────────────────
+  const [lightColor, setLightColor] = useState<string>("#0EA5E9");
+  const [lightBrightness, setLightBrightness] = useState<number>(70);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
 
-  // Settings state
-  const [blinkThreshold, setBlinkThreshold] = useState(30);
-  const [movementThreshold, setMovementThreshold] = useState(60);
+  // ── Settings ───────────────────────────────────────────────────────────────
+  const [blinkThreshold, setBlinkThreshold] = useState<number>(30);
+  const [movementThreshold, setMovementThreshold] = useState<number>(35);
 
-  // Alerts state
-  const [alerts, setAlerts] = useState<{ id: string; type: "success" | "suggestion" | "info"; message: string }[]>([]);
+  // ── Alerts ─────────────────────────────────────────────────────────────────
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
-  // ── Audio context (lazy-initialised on first user interaction) ──────────────
+  // ── Audio ──────────────────────────────────────────────────────────────────
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const lastBlinkSoundLevel = useRef<"none" | "fatigue" | "critical">("none");
+  const lastMovementSoundLevel = useRef<"none" | "warning" | "alert">("none");
 
-  /**
-   * Returns (or lazily creates) the shared AudioContext.
-   * Must be called from within a user-gesture handler OR after the user has
-   * already interacted with the page at least once.
-   */
   const getAudioContext = useCallback((): AudioContext | null => {
-    if (typeof AudioContext === "undefined" && typeof (window as any).webkitAudioContext === "undefined") {
-      return null; // Browser doesn't support Web Audio API
-    }
+    if (
+      typeof AudioContext === "undefined" &&
+      typeof (window as any).webkitAudioContext === "undefined"
+    )
+      return null;
     if (!audioCtxRef.current) {
-      const Ctx = AudioContext ?? (window as any).webkitAudioContext;
+      const Ctx: typeof AudioContext =
+        AudioContext ?? (window as any).webkitAudioContext;
       audioCtxRef.current = new Ctx();
     }
-    // Resume if suspended (required after autoplay policy restrictions)
     if (audioCtxRef.current.state === "suspended") {
       audioCtxRef.current.resume();
     }
     return audioCtxRef.current;
   }, []);
 
-  // Unlock the audio context on the very first user interaction so subsequent
-  // programmatic calls work without a gesture.
+  // Unlock AudioContext on first user interaction
   useEffect(() => {
     const unlock = () => {
       getAudioContext();
@@ -135,155 +154,177 @@ function App() {
     };
   }, [getAudioContext]);
 
-  // ── Track last played threshold to avoid replaying the same level ──────────
-  // "none" | "fatigue" | "critical"
-  const lastSoundLevel = useRef<"none" | "fatigue" | "critical">("none");
+  // ── pushAlert: replaces prior alert from the same sensor ──────────────────
+  const pushAlert = useCallback((id: string, type: AlertType, message: string) => {
+    setAlerts((prev: AlertItem[]) => {
+      const prefix = id.split("-")[0]; // "blink" | "movement"
+      const filtered = prev.filter((a: AlertItem) => !a.id.startsWith(prefix));
+      return [...filtered, { id, type, message }];
+    });
+  }, []);
 
-  // ── Alert + sound logic whenever blinkRate changes ─────────────────────────
+  // ── Blink alert + sound ───────────────────────────────────────────────────
   useEffect(() => {
     if (!isSessionActive) return;
-
-    let type: "success" | "suggestion" | "info";
+    let type: AlertType;
     let message: string;
     let color: string;
     let newSoundLevel: "none" | "fatigue" | "critical";
 
     if (blinkRate >= 1 && blinkRate <= 20) {
       type = "success";
-      message = "Great job! You've been in the flow. Keep up the excellent work!";
-      color = "#00C896"; // Emerald - Normal
+      message = "Blink rate normal — great focus! Keep it up.";
+      color = "#00C896";
       newSoundLevel = "none";
     } else if (blinkRate >= 21 && blinkRate <= 30) {
       type = "info";
-      message = "You're working hard! Take a moment to relax your eyes.";
-      color = "#FBBF7C"; // Peach - Fatigue
+      message = "Blink rate rising (Warning) — take a moment to relax your eyes.";
+      color = "#FBBF7C";
       newSoundLevel = "fatigue";
     } else if (blinkRate >= 31) {
       type = "suggestion";
-      message = "High blink rate detected! Please take a break to avoid eye strain.";
-      color = "#ff0000"; // Red - Critical
+      message = "High blink rate detected (Alert) — please take a break to avoid eye strain!";
+      color = "#ff0000";
       newSoundLevel = "critical";
     } else {
       return;
     }
 
-    // Update LED colour
     setLightColor(color);
+    pushAlert(`blink-${Date.now()}`, type, message);
 
-    // Show alert
-    const newAlert = {
-      id: Date.now().toString(),
-      type,
-      message,
-    };
-    setAlerts([newAlert]);
-
-    // Play sound only when threshold level changes (avoid repeating on every tick)
-    if (soundEnabled && newSoundLevel !== "none" && newSoundLevel !== lastSoundLevel.current) {
+    if (
+      soundEnabled &&
+      newSoundLevel !== "none" &&
+      newSoundLevel !== lastBlinkSoundLevel.current
+    ) {
       const ctx = getAudioContext();
       if (ctx) {
-        if (newSoundLevel === "fatigue") {
-          playFatigueSound(ctx);
-        } else if (newSoundLevel === "critical") {
-          playCriticalSound(ctx);
-        }
+        if (newSoundLevel === "fatigue") playFatigueSound(ctx);
+        else if (newSoundLevel === "critical") playCriticalSound(ctx);
       }
     }
+    lastBlinkSoundLevel.current = newSoundLevel;
+  }, [blinkRate, isSessionActive, soundEnabled, getAudioContext, pushAlert]);
 
-    // Reset sound cooldown when returning to normal
-    if (newSoundLevel === "none") {
-      lastSoundLevel.current = "none";
+  // ── Head movement alert + sound + flow impact ─────────────────────────────
+  useEffect(() => {
+    if (!isSessionActive) return;
+    const warningThreshold = movementThreshold - 15;
+    let newSoundLevel: "none" | "warning" | "alert";
+
+    if (movementLevel > movementThreshold) {
+      pushAlert(
+        `movement-${Date.now()}`,
+        "suggestion",
+        `Head movement Alert — excessive movement detected Please stabilise your posture.`
+      );
+      newSoundLevel = "alert";
+      setFlowLevel((prev: number) => Math.max(prev - 20, 20));
+      setFlowState("fatigue");
+    } else if (movementLevel > warningThreshold) {
+      pushAlert(
+        `movement-${Date.now()}`,
+        "info",
+        `Head movement Warning — movement increasing Try to stay still.`
+      );
+      newSoundLevel = "warning";
+      setFlowLevel((prev: number) => Math.max(prev - 8, 40));
+      setFlowState("focus");
     } else {
-      lastSoundLevel.current = newSoundLevel;
+      lastMovementSoundLevel.current = "none";
+      return;
     }
-  }, [blinkRate, isSessionActive, soundEnabled, getAudioContext]);
 
-  // ── ESP32 blink listener ───────────────────────────────────────────────────
+    if (soundEnabled && newSoundLevel !== lastMovementSoundLevel.current) {
+      const ctx = getAudioContext();
+      if (ctx) {
+        if (newSoundLevel === "warning") playMovementWarningSound(ctx);
+        else if (newSoundLevel === "alert") playMovementAlertSound(ctx);
+      }
+    }
+    lastMovementSoundLevel.current = newSoundLevel;
+  }, [movementLevel, movementThreshold, isSessionActive, soundEnabled, getAudioContext, pushAlert]);
+
+  // ── ESP32 blink listener ──────────────────────────────────────────────────
   useEffect(() => {
     const blinkRef = ref(database, 'blinkRate');
     const unsubscribe = onValue(blinkRef, (snapshot) => {
       if (!isSessionActive) return;
       const data = snapshot.val();
       if (data !== null && !isNaN(data)) {
-        const newBlinkRate = parseInt(data);
+        const newBlinkRate = parseInt(data, 10);
         setBlinkRate(newBlinkRate);
-        setBlinkHistory(prev => [...prev.slice(1), newBlinkRate]);
-
-        if (newBlinkRate > blinkThreshold) {
-          setFlowState("fatigue");
-          setFlowLevel(45);
-        } else if (newBlinkRate < 21) {
-          setFlowState("flow");
-          setFlowLevel(85);
-        } else {
-          setFlowState("focus");
-          setFlowLevel(70);
-        }
+        setBlinkHistory((prev: number[]) => [...prev.slice(1), newBlinkRate]);
+        setFlowLevel((prev: number) => {
+          if (newBlinkRate > blinkThreshold) return Math.min(prev, 45);
+          if (newBlinkRate < 21) return Math.max(prev, 75);
+          return Math.max(prev, 60);
+        });
+        if (newBlinkRate > blinkThreshold) setFlowState("fatigue");
+        else if (newBlinkRate < 21) setFlowState("flow");
+        else setFlowState("focus");
       }
     });
     return () => unsubscribe();
   }, [blinkThreshold, isSessionActive]);
 
+  // ── ESP32 movement listener ───────────────────────────────────────────────
   useEffect(() => {
     const movementRef = ref(database, 'headMovement');
     const unsubscribe = onValue(movementRef, (snapshot) => {
       if (!isSessionActive) return;
       const data = snapshot.val();
       if (data !== null && !isNaN(data)) {
-        const newMovement = parseInt(data);
+        const newMovement = parseInt(data, 10);
         setMovementLevel(newMovement);
-        setMovementHistory(prev => [...prev.slice(1), newMovement]);
+        setMovementHistory((prev: number[]) => [...prev.slice(1), newMovement]);
       }
     });
     return () => unsubscribe();
   }, [isSessionActive]);
 
-  // Update current time every second
+  // ── Clock ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const timeInterval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-    return () => clearInterval(timeInterval);
+    const id = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(id);
   }, []);
 
-  // Update focus streak when in flow state
+  // ── Focus streak ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isSessionActive) return;
-    const streakInterval = setInterval(() => {
-      if (flowState === "flow") {
-        setFocusStreakSeconds(prev => prev + 1);
-      }
+    const id = setInterval(() => {
+      if (flowState === "flow") setFocusStreakSeconds((prev: number) => prev + 1);
     }, 1000);
-    return () => clearInterval(streakInterval);
+    return () => clearInterval(id);
   }, [flowState, isSessionActive]);
 
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleDismissAlert = (id: string) => {
-    setAlerts((prev) => prev.filter((alert) => alert.id !== id));
+    setAlerts((prev: AlertItem[]) => prev.filter((a: AlertItem) => a.id !== id));
   };
 
-  const getBlinkStatus = () => {
+  const getBlinkStatus = (): "normal" | "warning" | "alert" => {
     if (blinkRate > blinkThreshold) return "alert";
     if (blinkRate > blinkThreshold - 10) return "warning";
     return "normal";
   };
 
-  const getMovementStatus = () => {
+  const getMovementStatus = (): "normal" | "warning" | "alert" => {
     if (movementLevel > movementThreshold) return "alert";
     if (movementLevel > movementThreshold - 15) return "warning";
     return "normal";
   };
 
-  const formatTime = (date: Date) => {
+  const formatTime = (date: Date): string => {
     let hours = date.getHours();
     const minutes = date.getMinutes();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    hours = hours ? hours : 12;
-    const minutesStr = minutes < 10 ? '0' + minutes : minutes;
-    return `${hours}:${minutesStr} ${ampm}`;
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12 || 12;
+    return `${hours}:${minutes < 10 ? "0" + minutes : minutes} ${ampm}`;
   };
 
-  // ── JSX ────────────────────────────────────────────────────────────────────
+  // ── JSX ───────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
       {/* Header */}
@@ -313,11 +354,14 @@ function App() {
                   </>
                 )}
               </Button>
-
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isSessionActive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    isSessionActive ? "bg-green-500 animate-pulse" : "bg-gray-400"
+                  }`}
+                />
                 <span className="text-sm text-gray-600">
-                  {isSessionActive ? 'Live Session' : 'Session Paused'}
+                  {isSessionActive ? "Live Session" : "Session Paused"}
                 </span>
               </div>
               <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-lg">
@@ -331,6 +375,7 @@ function App() {
         </div>
       </header>
 
+      {/* Main */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="dashboard" className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-3">
@@ -339,10 +384,13 @@ function App() {
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
+          {/* Dashboard */}
           <TabsContent value="dashboard" className="space-y-6">
             {alerts.length > 0 && (
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Alerts & Suggestions</h3>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">
+                  Alerts & Suggestions
+                </h3>
                 <AlertNotification alerts={alerts} onDismiss={handleDismissAlert} />
               </div>
             )}
@@ -373,6 +421,7 @@ function App() {
             </div>
           </TabsContent>
 
+          {/* Controls */}
           <TabsContent value="controls" className="space-y-6">
             <PhysicalControls
               lightColor={lightColor}
@@ -384,6 +433,7 @@ function App() {
             />
           </TabsContent>
 
+          {/* Settings */}
           <TabsContent value="settings" className="space-y-6">
             <SettingsPanel
               blinkThreshold={blinkThreshold}
@@ -395,20 +445,14 @@ function App() {
         </Tabs>
       </main>
 
+      {/* Footer */}
       <footer className="mt-16 pb-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center text-sm text-gray-500">
-            <p>FocusFlow - Live ESP32 Blink Data</p>
+            <p>FocusFlow — Live ESP32 Sensor Data</p>
           </div>
         </div>
       </footer>
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.6; }
-          50% { opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 }
