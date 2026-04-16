@@ -37,7 +37,7 @@ function App() {
   // Physical controls state
   const [lightColor, setLightColor] = useState("#0EA5E9");
   const [lightBrightness, setLightBrightness] = useState(70);
-  const [vibrationEnabled, setVibrationEnabled] = useState(true);
+  const [vibrationEnabled, setVibrationEnabled] = useState(false);
   
   // Settings state
   const [blinkThreshold, setBlinkThreshold] = useState(30);
@@ -53,19 +53,25 @@ useEffect(() => {
 
   let type: "success" | "suggestion" | "info";
   let message: string;
+  let color: string;
 
   if (blinkRate >= 10 && blinkRate <= 20) {
     type = "success";
     message = "Great job! You've been in the flow. Keep up the excellent work!";
+    color = "#00C896"; // Emerald - Focus
   } else if (blinkRate >= 21 && blinkRate <= 30) {
     type = "info";
     message = "You're working hard! Take a moment to relax your eyes.";
+    color = "#FBBF7C"; // Peach - Relax
   } else if (blinkRate >= 31) {
     type = "suggestion";
     message = "High blink rate detected! Please take a break to avoid eye strain.";
+    color = "#ff0000"; // Lavender - Relax
   } else {
     return;
   }
+
+  setLightColor(color); // 👈 auto-changes the LED color in Controls tab
 
   const newAlert = {
     id: Date.now().toString(),

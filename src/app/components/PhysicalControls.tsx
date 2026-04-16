@@ -13,10 +13,10 @@ interface PhysicalControlsProps {
 }
 
 const colorPresets = [
-  { name: "Aqua", color: "#0EA5E9", category: "Focus" },
-  { name: "Emerald", color: "#10B981", category: "Focus" },
-  { name: "Peach", color: "#FB923C", category: "Relax" },
-  { name: "Lavender", color: "#A78BFA", category: "Relax" },
+  //{ name: "Aqua", color: "#0EA5E9", category: "Focus" },
+  { name: "Emerald", color: "#10B981", category: "Normal" },
+  { name: "Peach", color: "#FB923C", category: "Moderate" },
+  { name: "Red", color: "#ff0000", category: "Alert" },
 ];
 
 export function PhysicalControls({
