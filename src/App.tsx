@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { ref, onValue } from 'firebase/database';
-import { database } from './firebase';  
+import { database } from './firebase';
 import { FlowStateMeter } from "./app/components/FlowStateMeter";
 import { SensorWidget } from "./app/components/SensorWidget";
 import { PhysicalControls } from "./app/components/PhysicalControls";
@@ -16,114 +16,189 @@ const generateHistory = (length: number, min: number, max: number) => {
   return Array.from({ length }, () => Math.floor(Math.random() * (max - min) + min));
 };
 
+// ─── Sound helpers (Web Audio API) ───────────────────────────────────────────
+
+/**
+ * Plays a soft two-tone chime for the "fatigue" threshold (blink rate 21-30).
+ * Uses a sine wave at ~440 Hz with a gentle fade-out envelope.
+ */
+function playFatigueSound(ctx: AudioContext) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(440, ctx.currentTime);          // A4
+  osc.frequency.setValueAtTime(520, ctx.currentTime + 0.15);   // slight rise
+
+  gain.gain.setValueAtTime(0, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.05); // soft attack
+  gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.6);     // gentle fade
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.65);
+}
+
+/**
+ * Plays a more urgent two-pulse alert for the "critical" threshold (blink rate 31+).
+ * Uses a higher-pitched tone with two short pulses.
+ */
+function playCriticalSound(ctx: AudioContext) {
+  [0, 0.3].forEach((delay) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime + delay);       // A5
+    osc.frequency.setValueAtTime(660, ctx.currentTime + delay + 0.1); // dip
+
+    gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+    gain.gain.linearRampToValueAtTime(0.28, ctx.currentTime + delay + 0.04);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + 0.25);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime + delay);
+    osc.stop(ctx.currentTime + delay + 0.3);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function App() {
   // Session control state
   const [isSessionActive, setIsSessionActive] = useState(true);
-  
+
   // Current time state
   const [currentTime, setCurrentTime] = useState(new Date());
-  
+
   // Sensor state
   const [blinkRate, setBlinkRate] = useState(18);
   const [movementLevel, setMovementLevel] = useState(0);
   const [blinkHistory, setBlinkHistory] = useState(() => generateHistory(20, 15, 25));
   const [movementHistory, setMovementHistory] = useState(() => generateHistory(20, 0, 5));
-  
+
   // Flow state
   const [flowLevel, setFlowLevel] = useState(75);
   const [flowState, setFlowState] = useState<"flow" | "focus" | "fatigue" | "break">("flow");
   const [focusStreakSeconds, setFocusStreakSeconds] = useState(0);
-  
+
   // Physical controls state
   const [lightColor, setLightColor] = useState("#0EA5E9");
   const [lightBrightness, setLightBrightness] = useState(70);
-  const [vibrationEnabled, setVibrationEnabled] = useState(false);
-  
+  const [soundEnabled, setSoundEnabled] = useState(false);
+
   // Settings state
   const [blinkThreshold, setBlinkThreshold] = useState(30);
   const [movementThreshold, setMovementThreshold] = useState(60);
-  
-// Alerts state
-const [alerts, setAlerts] = useState<{ id: string; type: "success" | "suggestion" | "info"; message: string }[]>([]);
 
-//to be moved
-// Alert state depending on blink threshold
-useEffect(() => {
-  if (!isSessionActive) return;
+  // Alerts state
+  const [alerts, setAlerts] = useState<{ id: string; type: "success" | "suggestion" | "info"; message: string }[]>([]);
 
-  let type: "success" | "suggestion" | "info";
-  let message: string;
-  let color: string;
+  // ── Audio context (lazy-initialised on first user interaction) ──────────────
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
-  if (blinkRate >= 10 && blinkRate <= 20) {
-    type = "success";
-    message = "Great job! You've been in the flow. Keep up the excellent work!";
-    color = "#00C896"; // Emerald - Focus
-  } else if (blinkRate >= 21 && blinkRate <= 30) {
-    type = "info";
-    message = "You're working hard! Take a moment to relax your eyes.";
-    color = "#FBBF7C"; // Peach - Relax
-  } else if (blinkRate >= 31) {
-    type = "suggestion";
-    message = "High blink rate detected! Please take a break to avoid eye strain.";
-    color = "#ff0000"; // Red - Alert
-  } else {
-    return;
-  }
+  /**
+   * Returns (or lazily creates) the shared AudioContext.
+   * Must be called from within a user-gesture handler OR after the user has
+   * already interacted with the page at least once.
+   */
+  const getAudioContext = useCallback((): AudioContext | null => {
+    if (typeof AudioContext === "undefined" && typeof (window as any).webkitAudioContext === "undefined") {
+      return null; // Browser doesn't support Web Audio API
+    }
+    if (!audioCtxRef.current) {
+      const Ctx = AudioContext ?? (window as any).webkitAudioContext;
+      audioCtxRef.current = new Ctx();
+    }
+    // Resume if suspended (required after autoplay policy restrictions)
+    if (audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  }, []);
 
-  setLightColor(color); // 
+  // Unlock the audio context on the very first user interaction so subsequent
+  // programmatic calls work without a gesture.
+  useEffect(() => {
+    const unlock = () => {
+      getAudioContext();
+      window.removeEventListener("click", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+    window.addEventListener("click", unlock);
+    window.addEventListener("keydown", unlock);
+    return () => {
+      window.removeEventListener("click", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, [getAudioContext]);
 
-  const newAlert = {
-    id: Date.now().toString(),
-    type,
-    message,
-  };
+  // ── Track last played threshold to avoid replaying the same level ──────────
+  // "none" | "fatigue" | "critical"
+  const lastSoundLevel = useRef<"none" | "fatigue" | "critical">("none");
 
-  setAlerts([newAlert]);
-}, [blinkRate, isSessionActive]);
-  
-  // Timeline data
-  // const [timelineSegments] = useState([
-  //   {
-  //     id: "1",
-  //     state: "focus" as const,
-  //     duration: 10,
-  //     startTime: "2:00 PM",
-  //     stats: { avgBlinkRate: 20, avgMovementLevel: 30 },
-  //   },
-  //   {
-  //     id: "2",
-  //     state: "flow" as const,
-  //     duration: 15,
-  //     startTime: "2:10 PM",
-  //     stats: { avgBlinkRate: 18, avgMovementLevel: 25 },
-  //   },
-  //   {
-  //     id: "3",
-  //     state: "fatigue" as const,
-  //     duration: 8,
-  //     startTime: "2:25 PM",
-  //     stats: { avgBlinkRate: 28, avgMovementLevel: 55 },
-  //   },
-  //   {
-  //     id: "4",
-  //     state: "break" as const,
-  //     duration: 5,
-  //     startTime: "2:33 PM",
-  //     stats: { avgBlinkRate: 22, avgMovementLevel: 20 },
-  //   },
-  //   {
-  //     id: "5",
-  //     state: "flow" as const,
-  //     duration: 12,
-  //     startTime: "2:38 PM",
-  //     stats: { avgBlinkRate: 19, avgMovementLevel: 28 },
-  //   },
-  // ]);
+  // ── Alert + sound logic whenever blinkRate changes ─────────────────────────
+  useEffect(() => {
+    if (!isSessionActive) return;
 
-  const currentSessionTime = 45;
+    let type: "success" | "suggestion" | "info";
+    let message: string;
+    let color: string;
+    let newSoundLevel: "none" | "fatigue" | "critical";
 
-  //ESP32 BLINK LISTENER 
+    if (blinkRate >= 1 && blinkRate <= 20) {
+      type = "success";
+      message = "Great job! You've been in the flow. Keep up the excellent work!";
+      color = "#00C896"; // Emerald - Normal
+      newSoundLevel = "none";
+    } else if (blinkRate >= 21 && blinkRate <= 30) {
+      type = "info";
+      message = "You're working hard! Take a moment to relax your eyes.";
+      color = "#FBBF7C"; // Peach - Fatigue
+      newSoundLevel = "fatigue";
+    } else if (blinkRate >= 31) {
+      type = "suggestion";
+      message = "High blink rate detected! Please take a break to avoid eye strain.";
+      color = "#ff0000"; // Red - Critical
+      newSoundLevel = "critical";
+    } else {
+      return;
+    }
+
+    // Update LED colour
+    setLightColor(color);
+
+    // Show alert
+    const newAlert = {
+      id: Date.now().toString(),
+      type,
+      message,
+    };
+    setAlerts([newAlert]);
+
+    // Play sound only when threshold level changes (avoid repeating on every tick)
+    if (soundEnabled && newSoundLevel !== "none" && newSoundLevel !== lastSoundLevel.current) {
+      const ctx = getAudioContext();
+      if (ctx) {
+        if (newSoundLevel === "fatigue") {
+          playFatigueSound(ctx);
+        } else if (newSoundLevel === "critical") {
+          playCriticalSound(ctx);
+        }
+      }
+    }
+
+    // Reset sound cooldown when returning to normal
+    if (newSoundLevel === "none") {
+      lastSoundLevel.current = "none";
+    } else {
+      lastSoundLevel.current = newSoundLevel;
+    }
+  }, [blinkRate, isSessionActive, soundEnabled, getAudioContext]);
+
+  // ── ESP32 blink listener ───────────────────────────────────────────────────
   useEffect(() => {
     const blinkRef = ref(database, 'blinkRate');
     const unsubscribe = onValue(blinkRef, (snapshot) => {
@@ -133,8 +208,7 @@ useEffect(() => {
         const newBlinkRate = parseInt(data);
         setBlinkRate(newBlinkRate);
         setBlinkHistory(prev => [...prev.slice(1), newBlinkRate]);
-        
-        // Update flow state from real data
+
         if (newBlinkRate > blinkThreshold) {
           setFlowState("fatigue");
           setFlowLevel(45);
@@ -163,6 +237,7 @@ useEffect(() => {
     });
     return () => unsubscribe();
   }, [isSessionActive]);
+
   // Update current time every second
   useEffect(() => {
     const timeInterval = setInterval(() => {
@@ -170,42 +245,17 @@ useEffect(() => {
     }, 1000);
     return () => clearInterval(timeInterval);
   }, []);
-  
+
   // Update focus streak when in flow state
   useEffect(() => {
     if (!isSessionActive) return;
-    
     const streakInterval = setInterval(() => {
       if (flowState === "flow") {
         setFocusStreakSeconds(prev => prev + 1);
       }
     }, 1000);
-    
     return () => clearInterval(streakInterval);
   }, [flowState, isSessionActive]);
-
-  //SIMULATION - Blink 
-  useEffect(() => {
-    if (!isSessionActive) return;
-    
-    const interval = setInterval(() => {      
-      // Alerts based on REAL blink data
-      if (blinkRate > blinkThreshold && Math.random() > 0.8) {
-        const fatigueMessages = [
-          "High blink rate detected. Consider a 2-minute break.",
-          "Fatigue detected. Try a deep breath.",
-        ];
-        const newAlert = {
-          id: Date.now().toString(),
-          type: "suggestion" as const,
-          message: fatigueMessages[Math.floor(Math.random() * fatigueMessages.length)],
-        };
-        //setAlerts((prev) => [...prev.slice(-2), newAlert]);
-      }
-    }, 3000);  // Slower since blink is real-time
-    
-    return () => clearInterval(interval);
-  }, [movementLevel, movementThreshold, isSessionActive, blinkRate, blinkThreshold]);
 
   const handleDismissAlert = (id: string) => {
     setAlerts((prev) => prev.filter((alert) => alert.id !== id));
@@ -222,8 +272,7 @@ useEffect(() => {
     if (movementLevel > movementThreshold - 15) return "warning";
     return "normal";
   };
-  
-  // Format current time
+
   const formatTime = (date: Date) => {
     let hours = date.getHours();
     const minutes = date.getMinutes();
@@ -234,7 +283,7 @@ useEffect(() => {
     return `${hours}:${minutesStr} ${ampm}`;
   };
 
-  //JSX
+  // ── JSX ────────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
       {/* Header */}
@@ -264,7 +313,7 @@ useEffect(() => {
                   </>
                 )}
               </Button>
-              
+
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${isSessionActive ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
                 <span className="text-sm text-gray-600">
@@ -297,18 +346,15 @@ useEffect(() => {
                 <AlertNotification alerts={alerts} onDismiss={handleDismissAlert} />
               </div>
             )}
-
             <div className="grid lg:grid-cols-3 gap-6">
               <div>
-                <FlowStateMeter 
-                  flowLevel={flowLevel} 
-                  state={flowState} 
+                <FlowStateMeter
+                  flowLevel={flowLevel}
+                  state={flowState}
                   focusStreakSeconds={focusStreakSeconds}
                 />
               </div>
-
               <div className="lg:col-span-2 grid sm:grid-cols-2 gap-6">
-                {/* BLINK SENSOR SHOWS REAL ESP32 DATA */}
                 <SensorWidget
                   type="blink"
                   currentValue={blinkRate}
@@ -325,18 +371,16 @@ useEffect(() => {
                 />
               </div>
             </div>
-
-            {/* <FlowTimeline segments={timelineSegments} currentTime={currentSessionTime} /> */}
           </TabsContent>
 
           <TabsContent value="controls" className="space-y-6">
             <PhysicalControls
               lightColor={lightColor}
               lightBrightness={lightBrightness}
-              vibrationEnabled={vibrationEnabled}
+              soundEnabled={soundEnabled}
               onLightColorChange={setLightColor}
               onLightBrightnessChange={setLightBrightness}
-              onVibrationEnabledChange={setVibrationEnabled}
+              onSoundEnabledChange={setSoundEnabled}
             />
           </TabsContent>
 
@@ -354,7 +398,7 @@ useEffect(() => {
       <footer className="mt-16 pb-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center text-sm text-gray-500">
-            <p>FocusFlow - Live ESP32 Blink Data</p> {/* Updated footer */}
+            <p>FocusFlow - Live ESP32 Blink Data</p>
           </div>
         </div>
       </footer>
