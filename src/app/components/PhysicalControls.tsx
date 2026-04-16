@@ -51,7 +51,7 @@ export function PhysicalControls({
             {/* Visual Spectrum */}
             <div className="h-12 rounded-lg overflow-hidden mb-3" 
                  style={{
-                   background: 'linear-gradient(to right, #0EA5E9, #10B981, #FB923C, #A78BFA)'
+                   background: 'linear-gradient(to right, #0EA5E9, #10B981, #FB923C, #ff0000)'
                  }}>
             </div>
             

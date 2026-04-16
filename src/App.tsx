@@ -66,12 +66,12 @@ useEffect(() => {
   } else if (blinkRate >= 31) {
     type = "suggestion";
     message = "High blink rate detected! Please take a break to avoid eye strain.";
-    color = "#ff0000"; // Lavender - Relax
+    color = "#ff0000"; // Red - Alert
   } else {
     return;
   }
 
-  setLightColor(color); // 👈 auto-changes the LED color in Controls tab
+  setLightColor(color); // 
 
   const newAlert = {
     id: Date.now().toString(),
