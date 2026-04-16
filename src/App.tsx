@@ -41,7 +41,7 @@ function App() {
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
   
   // Settings state
-  const [blinkThreshold, setBlinkThreshold] = useState(25);
+  const [blinkThreshold, setBlinkThreshold] = useState(30);
   const [movementThreshold, setMovementThreshold] = useState(60);
   
   // Alerts state
@@ -49,48 +49,48 @@ function App() {
     {
       id: "1",
       type: "success" as const,
-      message: "Great job! You've been in the flow for 15 minutes. Keep up the excellent work!",
+      message: "Great job! You've been in the flow. Keep up the excellent work!",
     },
   ]);
   
   // Timeline data
-  const [timelineSegments] = useState([
-    {
-      id: "1",
-      state: "focus" as const,
-      duration: 10,
-      startTime: "2:00 PM",
-      stats: { avgBlinkRate: 20, avgMovementLevel: 30 },
-    },
-    {
-      id: "2",
-      state: "flow" as const,
-      duration: 15,
-      startTime: "2:10 PM",
-      stats: { avgBlinkRate: 18, avgMovementLevel: 25 },
-    },
-    {
-      id: "3",
-      state: "fatigue" as const,
-      duration: 8,
-      startTime: "2:25 PM",
-      stats: { avgBlinkRate: 28, avgMovementLevel: 55 },
-    },
-    {
-      id: "4",
-      state: "break" as const,
-      duration: 5,
-      startTime: "2:33 PM",
-      stats: { avgBlinkRate: 22, avgMovementLevel: 20 },
-    },
-    {
-      id: "5",
-      state: "flow" as const,
-      duration: 12,
-      startTime: "2:38 PM",
-      stats: { avgBlinkRate: 19, avgMovementLevel: 28 },
-    },
-  ]);
+  // const [timelineSegments] = useState([
+  //   {
+  //     id: "1",
+  //     state: "focus" as const,
+  //     duration: 10,
+  //     startTime: "2:00 PM",
+  //     stats: { avgBlinkRate: 20, avgMovementLevel: 30 },
+  //   },
+  //   {
+  //     id: "2",
+  //     state: "flow" as const,
+  //     duration: 15,
+  //     startTime: "2:10 PM",
+  //     stats: { avgBlinkRate: 18, avgMovementLevel: 25 },
+  //   },
+  //   {
+  //     id: "3",
+  //     state: "fatigue" as const,
+  //     duration: 8,
+  //     startTime: "2:25 PM",
+  //     stats: { avgBlinkRate: 28, avgMovementLevel: 55 },
+  //   },
+  //   {
+  //     id: "4",
+  //     state: "break" as const,
+  //     duration: 5,
+  //     startTime: "2:33 PM",
+  //     stats: { avgBlinkRate: 22, avgMovementLevel: 20 },
+  //   },
+  //   {
+  //     id: "5",
+  //     state: "flow" as const,
+  //     duration: 12,
+  //     startTime: "2:38 PM",
+  //     stats: { avgBlinkRate: 19, avgMovementLevel: 28 },
+  //   },
+  // ]);
 
   const currentSessionTime = 45;
 
@@ -109,7 +109,7 @@ function App() {
         if (newBlinkRate > blinkThreshold) {
           setFlowState("fatigue");
           setFlowLevel(45);
-        } else if (newBlinkRate < 20) {
+        } else if (newBlinkRate < 21) {
           setFlowState("flow");
           setFlowLevel(85);
         } else {
@@ -184,7 +184,7 @@ function App() {
 
   const getBlinkStatus = () => {
     if (blinkRate > blinkThreshold) return "alert";
-    if (blinkRate > blinkThreshold - 5) return "warning";
+    if (blinkRate > blinkThreshold - 10) return "warning";
     return "normal";
   };
 
@@ -297,7 +297,7 @@ function App() {
               </div>
             </div>
 
-            <FlowTimeline segments={timelineSegments} currentTime={currentSessionTime} />
+            {/* <FlowTimeline segments={timelineSegments} currentTime={currentSessionTime} /> */}
           </TabsContent>
 
           <TabsContent value="controls" className="space-y-6">
