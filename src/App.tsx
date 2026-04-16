@@ -1,4 +1,3 @@
-//to be moved
 import { useState, useEffect } from "react";
 import { ref, onValue } from 'firebase/database';
 import { database } from './firebase';  
@@ -44,14 +43,38 @@ function App() {
   const [blinkThreshold, setBlinkThreshold] = useState(30);
   const [movementThreshold, setMovementThreshold] = useState(60);
   
-  // Alerts state
-  const [alerts, setAlerts] = useState([
-    {
-      id: "1",
-      type: "success" as const,
-      message: "Great job! You've been in the flow. Keep up the excellent work!",
-    },
-  ]);
+// Alerts state
+const [alerts, setAlerts] = useState<{ id: string; type: "success" | "suggestion" | "info"; message: string }[]>([]);
+
+//to be moved
+// Alert state depending on blink threshold
+useEffect(() => {
+  if (!isSessionActive) return;
+
+  let type: "success" | "suggestion" | "info";
+  let message: string;
+
+  if (blinkRate >= 10 && blinkRate <= 20) {
+    type = "success";
+    message = "Great job! You've been in the flow. Keep up the excellent work!";
+  } else if (blinkRate >= 21 && blinkRate <= 30) {
+    type = "info";
+    message = "You're working hard! Take a moment to relax your eyes.";
+  } else if (blinkRate >= 31) {
+    type = "suggestion";
+    message = "High blink rate detected! Please take a break to avoid eye strain.";
+  } else {
+    return;
+  }
+
+  const newAlert = {
+    id: Date.now().toString(),
+    type,
+    message,
+  };
+
+  setAlerts([newAlert]);
+}, [blinkRate, isSessionActive]);
   
   // Timeline data
   // const [timelineSegments] = useState([
