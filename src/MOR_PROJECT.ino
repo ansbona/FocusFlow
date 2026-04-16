@@ -8,8 +8,8 @@
 #define WIFI_PASSWORD ""
 
 // Firebase credentials
-#define API_KEY ""
-#define DATABASE_URL ""
+#define API_KEY "AIzaSyCRosSeYnlmjNJ_SHIBe2SrgY5Z9jtZD0g"
+#define DATABASE_URL "https://focusflow-esp32-default-rtdb.asia-southeast1.firebasedatabase.app"
 
 // Firebase objects
 FirebaseData fbdo;
@@ -31,17 +31,17 @@ int blinkCount = 0;
 // Motion
 bool isMoving = false;
 unsigned long lastMotionTime = 0;
-const unsigned long MOTION_COOLDOWN = 1000; // 1 second cooldown
+unsigned long motionStartTime = 0;                  // NEW
+const unsigned long MOTION_COOLDOWN = 800;          // CHANGED (was 5000)
+const unsigned long MIN_MOTION_DURATION = 500;      // NEW
 int headMovementCount = 0;
+int16_t prevGx = 0, prevGy = 0, prevGz = 0;        // NEW
 
 // BPM - 30 second window
 int blinkBuffer[30] = {0};
 unsigned long lastResetTime = 0;
 const unsigned long RESET_INTERVAL = 5000;
 int currentBPM = 0;
-
-// Motion threshold
-const int motionThreshold = 5000;
 
 // Firebase timing
 unsigned long lastFirebase = 0;
@@ -51,10 +51,10 @@ int firebaseErrors = 0;
 void setup() {
   Serial.begin(115200);
   pinMode(irSensorPin, INPUT_PULLUP);
-  Serial.println("Blink + Head Movement Detector");
+  Serial.println("Blink and Head Movement Detector");
 
   // MPU6050 setup
-  Wire.begin(8, 9); // SDA=21, SCL=22 by default on ESP32
+  Wire.begin(8, 9);
   mpu.initialize();
   if (mpu.testConnection()) {
     Serial.println("MPU6050 Connected");
@@ -69,7 +69,6 @@ void setup() {
   config.signer.tokens.legacy_token = API_KEY;
   config.timeout.serverResponse = 5000;
   config.timeout.socketConnection = 5000;
-
   Firebase.begin(&config, nullptr);
   Firebase.reconnectWiFi(true);
 
@@ -88,16 +87,15 @@ void connectWiFi() {
 }
 
 void loop() {
-  // ======================
+  //
   // BLINK DETECTION
-  // ======================
+  //
   bool irNow = digitalRead(irSensorPin);
 
   if (!waitingForBlinkEnd && irNow == LOW && irLastState == HIGH) {
     blinkStartTime = millis();
     waitingForBlinkEnd = true;
   }
-
   if (waitingForBlinkEnd && irNow == HIGH && irLastState == LOW) {
     if (millis() - blinkStartTime >= MIN_BLINK_TIME) {
       blinkCount++;
@@ -105,58 +103,57 @@ void loop() {
     }
     waitingForBlinkEnd = false;
   }
-
   irLastState = irNow;
 
-  // ======================
-  // BPM CALCULATION (5s window)
-  // ======================
+  //
+  // BPM CALCULATION
+  //
   if (millis() - lastResetTime >= RESET_INTERVAL) {
     lastResetTime = millis();
-
     for (int i = 29; i > 0; i--) {
       blinkBuffer[i] = blinkBuffer[i - 1];
     }
     blinkBuffer[0] = blinkCount;
-
     int totalBlinks = 0;
     for (int i = 0; i < 30; i++) {
       totalBlinks += blinkBuffer[i];
     }
-
     currentBPM = totalBlinks;
     blinkCount = 0;
-
     Serial.print("BPM: ");
     Serial.println(currentBPM);
   }
 
-  // ======================
-  // HEAD MOVEMENT (MPU6050)
-  // ======================
+  //
+  // HEAD MOVEMENT (MPU6050) — updated logic
+  //
   int16_t gx, gy, gz;
   mpu.getRotation(&gx, &gy, &gz);
-  int rawMotion = abs(gx) + abs(gy) + abs(gz);
 
-  if (rawMotion > 1000) {
+  int delta = abs(gx - prevGx) + abs(gy - prevGy) + abs(gz - prevGz);
+  prevGx = gx; prevGy = gy; prevGz = gz;
+
+  if (delta > 1000) {
+    lastMotionTime = millis();
     if (!isMoving) {
       isMoving = true;
+      motionStartTime = millis();
+    }
+  } else if (isMoving && millis() - lastMotionTime > MOTION_COOLDOWN) {
+    if (millis() - motionStartTime >= MIN_MOTION_DURATION) {
       headMovementCount++;
+      Serial.print("Head movement: ");
+      Serial.println(headMovementCount);
     }
-    lastMotionTime = millis();
-  } else {
-    if (isMoving && millis() - lastMotionTime > MOTION_COOLDOWN) {
-      isMoving = false;
-    }
+    isMoving = false;
   }
 
-  // ======================
+  //
   // FIREBASE SEND (every 2s)
-  // ======================
+  //
   if (millis() - lastFirebase >= FB_INTERVAL && WiFi.status() == WL_CONNECTED) {
     lastFirebase = millis();
 
-    // Send blink rate
     if (Firebase.RTDB.setInt(&fbdo, "/blinkRate", currentBPM)) {
       Serial.println("BlinkRate OK");
       firebaseErrors = 0;
@@ -165,7 +162,6 @@ void loop() {
       Serial.println(firebaseErrors++);
     }
 
-    // Send head movement
     if (Firebase.RTDB.setInt(&fbdo, "/headMovement", headMovementCount)) {
       Serial.println("HeadMovement OK");
     } else {
