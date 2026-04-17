@@ -157,7 +157,7 @@ function App() {
   // ── pushAlert: replaces prior alert from the same sensor ──────────────────
   const pushAlert = useCallback((id: string, type: AlertType, message: string) => {
     setAlerts((prev: AlertItem[]) => {
-      const prefix = id.split("-")[0]; // "blink" | "movement"
+      const prefix = id.split("-")[0];
       const filtered = prev.filter((a: AlertItem) => !a.id.startsWith(prefix));
       return [...filtered, { id, type, message }];
     });
@@ -210,28 +210,31 @@ function App() {
   // ── Head movement alert + sound + flow impact ─────────────────────────────
   useEffect(() => {
     if (!isSessionActive) return;
-    const warningThreshold = movementThreshold - 15;
+
     let newSoundLevel: "none" | "warning" | "alert";
 
-    if (movementLevel > movementThreshold) {
+    if (movementLevel >= 11) {
+      // Alert: count 11 and above
       pushAlert(
         `movement-${Date.now()}`,
         "suggestion",
-        `Head movement Alert — excessive movement detected Please stabilise your posture.`
+        `Head movement Alert — excessive movement detected. Please stabilise your posture.`
       );
       newSoundLevel = "alert";
       setFlowLevel((prev: number) => Math.max(prev - 20, 20));
       setFlowState("fatigue");
-    } else if (movementLevel > warningThreshold) {
+    } else if (movementLevel >= 6) {
+      // Warning: count 6–10
       pushAlert(
         `movement-${Date.now()}`,
         "info",
-        `Head movement Warning — movement increasing Try to stay still.`
+        `Head movement Warning — movement increasing. Try to stay still.`
       );
       newSoundLevel = "warning";
       setFlowLevel((prev: number) => Math.max(prev - 8, 40));
       setFlowState("focus");
     } else {
+      // Normal: count 1–5
       lastMovementSoundLevel.current = "none";
       return;
     }
@@ -244,7 +247,7 @@ function App() {
       }
     }
     lastMovementSoundLevel.current = newSoundLevel;
-  }, [movementLevel, movementThreshold, isSessionActive, soundEnabled, getAudioContext, pushAlert]);
+  }, [movementLevel, isSessionActive, soundEnabled, getAudioContext, pushAlert]);
 
   // ── ESP32 blink listener ──────────────────────────────────────────────────
   useEffect(() => {
@@ -311,8 +314,8 @@ function App() {
   };
 
   const getMovementStatus = (): "normal" | "warning" | "alert" => {
-    if (movementLevel > movementThreshold) return "alert";
-    if (movementLevel > movementThreshold - 15) return "warning";
+    if (movementLevel >= 11) return "alert";
+    if (movementLevel >= 6) return "warning";
     return "normal";
   };
 
